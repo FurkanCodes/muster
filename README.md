@@ -6,6 +6,8 @@
 
 **One place to run all your coding agents.**
 
+<img src="docs/media/muster.gif" alt="Muster's desktop app: agents in one list, a new one started in its own worktree, one that needs you answered with a click, an agent's turn put back, a ticket handed to an agent, and muster ssh to a server" width="100%">
+
 Run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and plain shells side by side, each in its own git worktree, and see at a glance which one is working, which has finished, and which is waiting on you.
 
 [![CI](https://github.com/FurkanCodes/muster/actions/workflows/ci.yml/badge.svg)](https://github.com/FurkanCodes/muster/actions/workflows/ci.yml)
@@ -13,10 +15,6 @@ Run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and plain shells side 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [Install](#install) · [Quick start](#quick-start) · [Features](#features) · [Servers & VMs](#agents-on-your-servers-and-vms) · [Guide](docs/guide.md) · [Plugins](#plugins) · [Development](#development)
-
-<a href="docs/media/muster.mp4"><img src="docs/media/muster.gif" alt="Muster's desktop app: agents in one list, a new one started in its own worktree, one that needs you answered with a click, an agent's turn put back, a ticket handed to an agent, and muster ssh to a server" width="100%"></a>
-
-<sub>The desktop app's real window, recorded over its pretend daemon. <a href="docs/media/muster.mp4">Watch it with sound</a>.</sub>
 
 </div>
 
