@@ -1,6 +1,7 @@
 # Repository agent instructions
 
 - Read [PRODUCT.md](PRODUCT.md) (`PRD-*`) and [ARCHITECTURE.md](ARCHITECTURE.md) (`ARC-*`) before planning, writing or reviewing code. Cite the rule IDs a change touches in plans, commit messages, reviews and test names.
+- Always read the `README.md` of every directory you plan, write or review code in, and those of its parents up to the root, before you start. Each one is that directory's contract: its interface, invariants, side effects and the tests to run. A change that alters what a README says (a public item, an invariant, a side effect, a test command) updates it in the same change, and a new code directory gets one.
 - When a change conflicts with a rule, stop and say so. Change the rule deliberately, or change the plan — never let code and rules drift.
 - `muster-core`, `muster-state` and `muster-model` do no IO (`ARC-01`). Docker, GitHub, ticket sources, harnesses, PTYs and the clock are reached only through their traits (`ARC-03`).
 - No source file over 1,000 lines and no struct over 40 fields (`ARC-08`). Split by responsibility before you get close.

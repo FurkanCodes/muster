@@ -332,16 +332,56 @@ Or `a` on the Settings screen's *Plugins*. [PLUGINS.md](PLUGINS.md) lists them; 
 
 ## How it is built
 
-A Rust workspace of seven crates around one rule: the daemon owns everything, and clients only draw it.
+A Rust workspace of eight crates around one rule: the daemon owns everything, and clients only draw it.
 
 - **`muster-daemon`** — a single Supervisor task owns all state and is the only writer (no shared mutable maps); every change is stored in SQLite before it is broadcast. Each session's terminal is an actor owning a sequence-numbered output ring, so a client that reconnects gets exactly what it missed. Hooks arrive on a private socket and are matched to sessions by a per-session token. GitHub calls run off the Supervisor's loop.
 - **`muster-state`** — the status logic as pure state machines with an injected clock: every rule (subagents still working, several open prompts, a permission notice that arrives late) is a unit test.
 - **`muster-core`** / **`muster-client`** — the protocol (length-prefixed MessagePack with named fields, typed error codes, version negotiation) and its transport.
+- **`muster-model`** — a client's copy of the daemon's state, built from its snapshot and deltas: what needs you and in what order, the list's lines, the spaces. Pure, and shared by the UI and the desktop app so they answer alike.
 - **`muster-tui`** — ratatui. The app is a state machine with no IO, so behaviour is tested by feeding it events and drawing it into a test buffer.
 - **`muster-notch`** — the notch, on a Mac: a client of the daemon like the UI, drawn through AppKit. What it shows and where are pure functions, tested anywhere.
 - **`muster`** — the binary.
 
 [ARCHITECTURE.md](ARCHITECTURE.md) has the details and the rules (`ARC-*`) the code is held to; [PRODUCT.md](PRODUCT.md) has what Muster is for (`PRD-*`).
+
+## Repository blueprint
+
+Every code directory has a `README.md` contract of its own (its interface, invariants and side effects), rolled up here. Test-only folders, fixtures, assets and generated bindings have none.
+
+### Local interface and invariants
+
+- `install.sh` — the one-command installer (`curl … | sh`): downloads the release binary for this machine (`MUSTER_VERSION`, `MUSTER_INSTALL_DIR`), checks its SHA-256 and, where `gh` is signed in, its build attestation (`MUSTER_SKIP_ATTESTATION=1` takes the checksum alone), builds from source where no binary exists, and on a Mac offers the Muster app (`--app`, `--no-app`, `MUSTER_APP`, `MUSTER_APP_DIR`). A download that fails its checks installs nothing (`ARC-21`). `MUSTER_DOWNLOADS` points it at a stand-in for tests.
+- `Cargo.toml` — the workspace of the crates below; `apps/desktop/src-tauri` is a Cargo workspace of its own.
+
+### Subdirectories and system boundaries
+
+- crates: [./crates/README.md](./crates/README.md) — the Rust workspace: `muster-core` (IO-free shared types, protocol 58, strict readers), `muster-state` (pure session and run machines), `muster-model` (a client's copy of state), `muster-client` (transport), `muster-daemon` (the Supervisor and everything it reaches), `muster-tui`, `muster-notch` and the `muster` binary.
+- apps: [./apps/README.md](./apps/README.md) — the desktop app (Tauri 2 + React 19), a window over the same daemon (`ARC-24`, `ARC-25`, `ARC-26`).
+- scripts: [./scripts/README.md](./scripts/README.md) — CI rule checks (`check-*`: file and type size `ARC-08`, secrets `PRD-06`, test sleeps `ARC-30`, TUI colours `ARC-29`, duplication `ARC-31`), agent-session measurement, the Linux build in Docker (`ARC-27`), logo rendering, the daemon soak test, and Claude Code hooks.
+- docs, examples: no code contracts; [docs/plugins.md](docs/plugins.md) says how to write a plugin, and each folder under [examples/plugins](examples/plugins) has a README of its own.
+
+### Global invariants
+
+- The daemon owns all state; one Supervisor task is its only writer, and every change is stored before it is broadcast (`ARC-02`, `ARC-10`). Clients only draw it (`ARC-24`).
+- `muster-core`, `muster-state` and `muster-model` do no IO (`ARC-01`); Docker, git hosts, ticket sources, harnesses, PTYs and the clock are reached only through traits (`ARC-03`).
+- Every protocol change raises its version; frozen handshake samples are added, never edited (`ARC-09`).
+- No source file over 1,000 lines, no struct over 40 fields (`ARC-08`); `unsafe` only in the daemon's restart hand-off and the notch's AppKit code (`ARC-12`).
+- Tasks are owned and every wait has a deadline (`ARC-13`); queues, rings and logs are bounded (`ARC-14`, `ARC-15`).
+- No real credential in code, fixtures, logs or output; credentials pasted into tickets are hidden (`PRD-06`). Ticket and plugin text is data, never instructions, and loses its control characters (`PRD-07`).
+- Nothing is written into the person's repository or agents' settings (`PRD-13`, `ARC-05`); plugins run nothing until their manifest's hash is approved (`PRD-15`).
+
+### Global side effects
+
+- Muster's data folder (SQLite store with backups, timelines, plugin folders, run mirrors) and runtime folder (two private Unix sockets, the daemon's lock and the notch's, the daemon log, and the forwarded ssh-agent link).
+- Child processes: agents and shells on PTYs, git, `gh`, `glab`, Docker, plugin programs, ssh.
+- Network only to the person's trackers and git hosts (Jira, Linear, Bitbucket, MCP and OAuth sign-ins), GitHub releases for upgrades, and a plugin's repository on install or update.
+- The macOS Keychain for sign-ins and tokens; on a Mac, notifications and the notch panel.
+
+### System verification
+
+- `cargo fmt --check` and `CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets`.
+- Tests of what changed: `cargo nextest run -p <crate>` plus the end-to-end files in `crates/muster/tests/` for the area touched (see [CLAUDE.md](CLAUDE.md), *Which tests to run*); `pnpm lint`, `pnpm typecheck`, `pnpm test` in `apps/desktop`; `cargo test` in `apps/desktop/src-tauri`.
+- The whole suite (`cargo nextest run --workspace`) only for a protocol, dependency or toolchain change, or a release.
 
 ## Development
 
