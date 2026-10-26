@@ -53,20 +53,27 @@ fn a_space_is_made_shown_and_left_and_a_free_terminal_is_filed_where_its_shell_i
     ui.wait_without("Shift-Q back to the list");
     ui.wait_for("❯");
 
-    // Another space, made from the menu (after everything and Home) and
-    // shown at once: empty.
+    // Another space, made from the menu (after everything and Home):
+    // listed with the others, never the list narrowed to it (ARC-33).
     ui.keys(b"W");
     ui.wait_for("new space…");
     ui.keys(b"\x1b[B\x1b[B\r");
     ui.wait_for("it doesn't change where they run");
     ui.keys(b"Work\r");
-    // Its name in the tab says it is shown; the note saying so may pass.
-    ui.wait_for("Sessions · Work");
-    assert!(!ui.text().contains("⌂ main"), "{}", ui.text());
+    ui.wait_without("it doesn't change where they run");
+    ui.wait_for("Work");
+    let screen = ui.text();
+    assert!(
+        screen.contains("Home") && screen.contains("⌂ main"),
+        "{screen}"
+    );
+    assert!(!screen.contains("Sessions · Work"), "{screen}");
 
-    // Everything again, each space under its heading.
+    // One space alone, then every space again, each under its heading.
     ui.keys(b"]");
-    ui.wait_for("Showing everything.");
+    ui.wait_for("Sessions · Home");
+    ui.keys(b"]]");
+    ui.wait_for("Showing every space.");
     ui.wait_for("⌂ main");
     let screen = ui.text();
     assert!(
