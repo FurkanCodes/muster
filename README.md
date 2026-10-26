@@ -12,7 +12,7 @@ Run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and plain shells side 
 [![Release](https://img.shields.io/github/v/release/FurkanCodes/muster)](https://github.com/FurkanCodes/muster/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[Install](#install) · [Quick start](#quick-start) · [Features](#features) · [Guide](docs/guide.md) · [Plugins](#plugins) · [Development](#development)
+[Install](#install) · [Quick start](#quick-start) · [Features](#features) · [Servers & VMs](#agents-on-your-servers-and-vms) · [Guide](docs/guide.md) · [Plugins](#plugins) · [Development](#development)
 
 </div>
 
@@ -27,6 +27,7 @@ Muster fixes that:
 - **Every agent gets its own worktree**, so their changes never collide.
 - **One list shows them all**, with a live status: working, finished, or *needs you*.
 - **Sessions live in a background daemon.** Close the window and nothing stops. After a restart, agents pick up their conversations again.
+- **Run them on a server or VM** over plain ssh, so they keep working while your laptop sleeps.
 - **Muster tells you when something needs you**, with a notification, a sound, or the MacBook notch.
 
 It works in your terminal (a full terminal UI), in a Mac app, and from your shell as plain commands. All three are views over the same sessions.
@@ -45,7 +46,7 @@ It works in your terminal (a full terminal UI), in a Mac app, and from your shel
 | **Collisions** | Two worktrees touching the same files are flagged as `overlap`, or as `conflict` where git says a merge would fail. |
 | **Pull requests** | Each branch shows its PR's state (`#42 approved ✓`). Run checks, have Claude Code review a change, or push and open a draft PR on one key. |
 | **Tidy and stack** | Have an agent rewrite unpushed commits into clean ones, or build a worktree on top of another branch that hasn't merged yet. |
-| **Remote machines** | `muster ssh` sets Muster up on a server or VM over plain ssh, so agents keep working while your laptop sleeps. |
+| **Servers and VMs** | `muster ssh` sets Muster up on a server or VM over plain ssh, so agents keep working while your laptop sleeps. [More below](#agents-on-your-servers-and-vms). |
 | **The notch** | On a MacBook, the notch shows how many agents are working and waiting. Point at it to see the list. |
 | **Plugins** | Add ticket sources and side panels in any language. |
 
@@ -117,15 +118,30 @@ muster pr fix-login                        # push and open a draft PR
 
 Add `--json` to `muster status` or `muster list` for machine-readable output. To make a bare `claude` start a Muster session, add `eval "$(muster init zsh)"` to your `~/.zshrc` (or use `bash`, `fish`).
 
-### On another machine
+The [guide](docs/guide.md#from-your-shell) has the full command line: workspaces, driving terminals, tickets, and scripting.
+
+## Agents on your servers and VMs
+
+Run your agents on a machine that never sleeps: a cloud server, a VM on your PC, or a Mac at home. It can be macOS or Linux, Intel/AMD or ARM; anything you can `ssh` into works. Your laptop can close, and the agents keep working.
 
 ```bash
-muster machine add vm you@203.0.113.7   # a name for the machine
-muster ssh vm                           # install Muster there (after asking) and open a shell
-muster --on vm                          # your own UI, showing the machine's agents
+muster machine add vm you@203.0.113.7   # give the machine a name
+muster ssh vm                           # set it up and open a shell there
 ```
 
-The [guide](docs/guide.md#from-your-shell) has the full command line: workspaces, driving terminals, tickets, and scripting.
+The first `muster ssh` checks the machine. It offers to install Muster there, says what's missing (git, `gh`, Claude Code signed in), and then opens your login shell on it, with `muster` and `claude` ready. Muster uses your own ssh, keys and config, and adds nothing to them. If you forward your ssh agent, agents there push with your keys.
+
+Once it's set up, drive the machine from your laptop:
+
+```bash
+muster --on vm                          # your own UI, showing the machine's agents
+muster --on vm list agents              # any command, run against the machine
+muster --on vm attach fix-login/2       # jump into a session there
+muster ssh vm claude auth login         # run one command there (here, sign Claude Code in)
+muster ssh vm --install-claude          # install Claude Code there
+```
+
+`muster --on vm` reconnects by itself if the link drops. The machine only needs ssh: `muster ssh vm --install` downloads and checks the release on your laptop, then sends it over. See [the guide](docs/guide.md#from-your-shell) for more.
 
 ## Tickets and pull requests
 
