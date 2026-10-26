@@ -2014,7 +2014,7 @@ dependencies = [
 
 [[package]]
 name = "muster-client"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "muster-core",
  "serde",
@@ -2024,7 +2024,7 @@ dependencies = [
 
 [[package]]
 name = "muster-core"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "muster-desktop"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "muster-client",
  "muster-core",
@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "muster-model"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "muster-core",
 ]
