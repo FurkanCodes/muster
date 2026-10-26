@@ -14,6 +14,10 @@ Run Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI and plain shells side 
 
 [Install](#install) · [Quick start](#quick-start) · [Features](#features) · [Servers & VMs](#agents-on-your-servers-and-vms) · [Guide](docs/guide.md) · [Plugins](#plugins) · [Development](#development)
 
+<a href="docs/media/muster.mp4"><img src="docs/media/muster.gif" alt="Muster's desktop app: agents in one list, a new one started in its own worktree, one that needs you answered with a click, an agent's turn put back, a ticket handed to an agent, and muster ssh to a server" width="100%"></a>
+
+<sub>The desktop app's real window, recorded over its pretend daemon. <a href="docs/media/muster.mp4">Watch it with sound</a>.</sub>
+
 </div>
 
 ---
@@ -247,7 +251,7 @@ Every code directory has a `README.md` contract of its own (its interface, invar
   - `muster-client`: transport;
   - `muster-daemon`: the Supervisor and everything it reaches;
   - `muster-tui`, `muster-notch` and the `muster` binary.
-- apps: [./apps/README.md](./apps/README.md): the desktop app (Tauri 2 + React 19), a window over the same daemon (`ARC-24`, `ARC-25`, `ARC-26`).
+- apps: [./apps/README.md](./apps/README.md): the desktop app (Tauri 2 + React 19), a window over the same daemon (`ARC-24`, `ARC-25`, `ARC-26`), and the README's video, cut from the desktop app's real window (`apps/video`).
 - scripts: [./scripts/README.md](./scripts/README.md):
   - CI rule checks (`check-*`): file and type size `ARC-08`, secrets `PRD-06`, test sleeps `ARC-30`, TUI colours `ARC-29`, duplication `ARC-31`;
   - agent-session measurement;
@@ -255,7 +259,7 @@ Every code directory has a `README.md` contract of its own (its interface, invar
   - logo rendering;
   - the daemon soak test;
   - Claude Code hooks.
-- docs, examples: no code contracts. [docs/guide.md](docs/guide.md) is the user guide, [docs/plugins.md](docs/plugins.md) explains how to write a plugin, and each folder under [examples/plugins](examples/plugins) has a README of its own.
+- docs, examples: no code contracts. [docs/guide.md](docs/guide.md) is the user guide, `docs/media` holds the README's video (made by `apps/video`), [docs/plugins.md](docs/plugins.md) explains how to write a plugin, and each folder under [examples/plugins](examples/plugins) has a README of its own.
 
 **Global invariants**
 
