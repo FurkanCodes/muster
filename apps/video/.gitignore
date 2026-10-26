@@ -1,7 +1,8 @@
 node_modules/
-# Made by `pnpm record` and `pnpm audio`: the shots are the app's, and the
-# recordings Mixkit's, fetched rather than redistributed.
+# Made by `pnpm record`, `pnpm record:tui` and `pnpm audio`: the shots are
+# the apps', and the recordings Mixkit's, fetched rather than redistributed.
 kit/shots/
+kit/tui/shots/
 kit/audio/*.mp3
 # What the render makes.
 launch/out/

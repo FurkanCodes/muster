@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Muster's terminal UI</title>
+    <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+    <style>
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-weight: 400;
+        src: url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-weight: 700;
+        src: url("../../node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-700-normal.woff2") format("woff2");
+      }
+      html,
+      body {
+        margin: 0;
+        background: #111110;
+        overflow: hidden;
+      }
+      #term {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+      /* No cursor blink, so a frame never catches it half drawn. */
+      .xterm-cursor-blink {
+        animation: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="term"></div>
+    <script type="module">
+      // A terminal window for Muster's terminal UI: xterm.js, the renderer
+      // the desktop app's terminals use, in the desktop app's terminal
+      // colours (apps/desktop/src/terminal/colours.ts) and font. The page
+      // that drives it writes the program's bytes with `window.feed` and
+      // hears what the terminal sends back (keys, and its answers to the
+      // program's questions) through `window.reply`.
+      import { Terminal } from "../../node_modules/@xterm/xterm/lib/xterm.mjs";
+
+      const theme = {
+        foreground: "#e8e6e1",
+        background: "#111110",
+        cursor: "#e8e6e1",
+        cursorAccent: "#111110",
+        selectionBackground: "rgba(79, 143, 255, 0.32)",
+        black: "#2e3436",
+        red: "#cc0000",
+        green: "#4e9a06",
+        yellow: "#c4a000",
+        blue: "#3465a4",
+        magenta: "#75507b",
+        cyan: "#06989a",
+        white: "#d3d7cf",
+        brightBlack: "#555753",
+        brightRed: "#ef2929",
+        brightGreen: "#8ae234",
+        brightYellow: "#fce94f",
+        brightBlue: "#729fcf",
+        brightMagenta: "#ad7fa8",
+        brightCyan: "#34e2e2",
+        brightWhite: "#eeeeec",
+      };
+
+      const params = new URLSearchParams(location.search);
+      const width = Number(params.get("width") ?? 1440);
+      const height = Number(params.get("height") ?? 900);
+      await document.fonts.load('400 17px "JetBrains Mono"');
+      await document.fonts.load('700 17px "JetBrains Mono"');
+      const term = new Terminal({
+        fontFamily: '"JetBrains Mono", Menlo, monospace',
+        fontSize: Number(params.get("font") ?? 15),
+        lineHeight: 1.12,
+        theme,
+        cursorBlink: false,
+        allowProposedApi: true,
+        scrollback: 0,
+      });
+      term.open(document.getElementById("term"));
+      const cell = term._core._renderService.dimensions.css.cell;
+      const columns = Math.floor(width / cell.width);
+      const rows = Math.floor(height / cell.height);
+      term.resize(columns, rows);
+      term.focus();
+      term.onData((data) => window.reply?.(data));
+      term.onBinary((data) => window.reply?.(data));
+
+      const bytes = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      window.term = term;
+      window.feed = (base64) => new Promise((done) => term.write(bytes(base64), done));
+      window.size = () => {
+        const now = term._core._renderService.dimensions.css;
+        return {
+          columns: term.cols,
+          rows: term.rows,
+          cell: { width: now.cell.width, height: now.cell.height },
+          width: Math.round(term.cols * now.cell.width),
+          height: Math.round(term.rows * now.cell.height),
+        };
+      };
+      // Where `text` is on the screen, by row and column, if it is.
+      window.find = (text, from = 0) => {
+        const buffer = term.buffer.active;
+        for (let row = from; row < term.rows; row++) {
+          const line = buffer.getLine(buffer.viewportY + row)?.translateToString(false) ?? "";
+          const column = line.indexOf(text);
+          if (column >= 0) return { row, column, length: text.length };
+        }
+        return null;
+      };
+      window.screenText = () => {
+        const buffer = term.buffer.active;
+        const lines = [];
+        for (let row = 0; row < term.rows; row++)
+          lines.push(buffer.getLine(buffer.viewportY + row)?.translateToString(true) ?? "");
+        return lines.join("\n");
+      };
+      window.ready = true;
+    </script>
+  </body>
+</html>

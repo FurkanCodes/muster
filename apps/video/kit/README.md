@@ -2,9 +2,10 @@
 
 ## Overview
 
-What the clip in [`../launch`](../launch/README.md) is made from, and read
-only from there: the app's shots, where each crop and click is on them, and
-the sound.
+What the cuts in [`../launch`](../launch/README.md) are made from, and read
+only from there: the desktop app's shots, where each crop and click is on
+them, and the sound. The terminal UI's shots and crops are in
+[`tui/`](./tui/README.md).
 
 ## Interface
 
@@ -29,3 +30,7 @@ the sound.
 ## Verification
 
 - After `pnpm record`, look at the crops: `pnpm contact` in the clip shows each in place.
+
+## Subdirectories
+
+- tui: [./tui/README.md](./tui/README.md): the terminal UI's recorder: the real `muster` binary in a real terminal over a throwaway daemon, its shots and crops.

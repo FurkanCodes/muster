@@ -1,28 +1,8 @@
 // The clip's elements, made once, and `seek(t)`, which sets every one from
 // the time alone. Product pixels are only ever the kit's shots and crops.
 
-import { crops, SCALE, shots } from "../kit/crops.js";
-import {
-  camera,
-  between,
-  clamp,
-  onScreen,
-  pointer,
-  spring,
-  springs,
-  WINDOW,
-} from "./engine.js";
-import {
-  ACT1,
-  at,
-  HEADLINES,
-  OUTRO,
-  REVEAL,
-  RINGS,
-  SSH_ROWS,
-  TYPED,
-  WINDOW_SHOTS,
-} from "./timeline.js";
+import { between, clamp, makeEngine, spring, springs } from "./engine.js";
+import { at } from "./timeline.js";
 
 const COLOURS = {
   waiting: "#ef7e6b",
@@ -42,16 +22,16 @@ function element(tag, className, parent, text) {
   return made;
 }
 
-/** A crop of a shot, drawn at `scale` CSS pixels per window pixel. */
-function crop(name, parent, scale = 1) {
-  const found = crops[name];
-  if (!found) throw new Error(`no crop ${name} in kit/crops.js`);
-  const shot = shots[found.shot];
+/** A crop of a shot of `kit` (found at `folder`), drawn at `scale` CSS pixels per window pixel. */
+function crop(kit, folder, name, parent, scale = 1) {
+  const found = kit.crops[name];
+  if (!found) throw new Error(`no crop ${name} in ${folder}/crops.js`);
+  const shot = kit.shots[found.shot];
   const made = element("div", "crop", parent);
   Object.assign(made.style, {
     width: `${found.w * scale}px`,
     height: `${found.h * scale}px`,
-    backgroundImage: `url(../kit/shots/${shot.file})`,
+    backgroundImage: `url(../${folder}/shots/${shot.file})`,
     backgroundSize: `${shot.width * scale}px ${shot.height * scale}px`,
     backgroundPosition: `${-found.x * scale}px ${-found.y * scale}px`,
   });
@@ -71,49 +51,69 @@ function words(parent, list, accent, colour) {
 const style = (node, values) => Object.assign(node.style, values);
 const px = (value) => `${value.toFixed(2)}px`;
 
-export function build(stage) {
+/**
+ * Builds cut `cut` (a timeline module) from kit `kit` (its crops module) on
+ * `stage`, and returns its `seek`.
+ */
+export function build(stage, cut, kit) {
+  const { ACT1, HEADLINES, KEYS, OUTRO, REVEAL, RINGS, SSH_ROWS, TYPED, WINDOW_IN, WINDOW_SHOTS } = cut;
+  const { crops, shots } = kit;
+  const { camera, onScreen, pointer, WINDOW } = makeEngine(cut, kit);
+  const folder = cut.KIT;
+  const cropOf = (name, parent, scale) => crop(kit, folder, name, parent, scale);
+
   const hud = element("div", "hud", stage);
   const world = element("div", "world", stage);
   const frame = element("div", "window", world);
-  const lights = element("div", "lights", frame);
-  for (const colour of ["#ff5f57", "#febc2e", "#28c840"]) element("i", "", lights).style.background = colour;
+  style(world, { width: `${WINDOW.width}px`, height: `${WINDOW.height}px` });
+  style(frame, { width: `${WINDOW.width}px`, height: `${WINDOW.height}px`, background: cut.LIGHTS ? "#171716" : COLOURS.term });
+  if (cut.LIGHTS) {
+    const lights = element("div", "lights", frame);
+    for (const colour of ["#ff5f57", "#febc2e", "#28c840"]) element("i", "", lights).style.background = colour;
+  }
 
   // The window: every shot it shows, stacked; the one shown on top.
   const layers = new Map();
   for (const [, name] of WINDOW_SHOTS) {
     if (layers.has(name)) continue;
     const image = element("img", "shot", frame);
-    image.src = `../kit/shots/${shots[name].file}`;
+    image.src = `../${folder}/shots/${shots[name].file}`;
+    style(image, { width: `${WINDOW.width}px`, height: `${WINDOW.height}px` });
     layers.set(name, image);
   }
-  const typed = crop(TYPED.crop, frame);
-  typed.classList.add("over");
-  const ssh = crops[SSH_ROWS.crop];
-  const masks = Array.from({ length: SSH_ROWS.rows + 1 }, () => element("div", "mask", frame));
+  // What is typed, uncovered a letter at a time: the crop of the text from
+  // the shot after it was typed, over the shot before.
+  const typings = (TYPED ? [TYPED].flat() : []).map((typing) => {
+    const made = cropOf(typing.crop, frame);
+    made.classList.add("over");
+    return { made, typing };
+  });
+  const ssh = SSH_ROWS ? crops[SSH_ROWS.crop] : null;
+  const masks = SSH_ROWS ? Array.from({ length: SSH_ROWS.rows + 1 }, () => element("div", "mask", frame)) : [];
   for (const mask of masks) mask.style.background = COLOURS.term;
 
   // Act 1.
   const act = element("div", "act", hud);
-  const line1 = element("div", "line line1", act);
-  const first = words(line1, ACT1.line1.words, ACT1.line1.accent, ACT1.line1.colour);
-  const line2 = element("div", "line line2", act);
-  const second = words(line2, ACT1.line2.text.split(" "), ACT1.line2.accent, ACT1.line2.colour);
-  const cards = ACT1.cards.map((card) => {
+  const line1 = ACT1 && element("div", "line line1", act);
+  const first = ACT1 ? words(line1, ACT1.line1.words, ACT1.line1.accent, ACT1.line1.colour) : [];
+  const line2 = ACT1 && element("div", "line line2", act);
+  if (ACT1) words(line2, ACT1.line2.text.split(" "), ACT1.line2.accent, ACT1.line2.colour);
+  const cards = (ACT1?.cards ?? []).map((card) => {
     const holder = element("div", "card", act);
-    crop(card.crop, holder, 2.2);
+    cropOf(card.crop, holder, 2.2);
     return holder;
   });
-  const badge = element("div", "badge", act);
-  crop(ACT1.badge.crop, badge, 1.75);
-  const dot = element("div", "dot", act);
-  const question = element("div", "question", act, ACT1.question.text);
+  const badge = ACT1 && element("div", "badge", act);
+  if (ACT1) cropOf(ACT1.badge.crop, badge, 1.75);
+  const dot = ACT1 && element("div", "dot", act);
+  const question = ACT1 && element("div", "question", act, ACT1.question.text);
 
   // The drop.
   const reveal = element("div", "reveal", hud);
   const logo = element("img", "logo", reveal);
-  logo.src = "../kit/shots/kep.png";
+  logo.src = `../${folder}/shots/kep.png`;
   const name = element("div", "name", reveal, "Muster");
-  const tagline = element("div", "tagline", reveal, "One place to run all your coding agents.");
+  const tagline = element("div", "tagline", reveal, cut.TAGLINE);
 
   // Headlines over the window, on a band that keeps them clear of it.
   const headlines = HEADLINES.map((headline) => {
@@ -122,7 +122,17 @@ export function build(stage) {
     const title = element("div", "title", holder);
     const parts = words(title, headline.title.split(" "), headline.accent, headline.colour);
     const sub = element("div", "sub", holder, headline.sub);
-    return { band, holder, parts, sub, headline };
+    // The keys pressed in this scene, each with what the terminal UI's own
+    // hints call it, one shown at a time under the headline.
+    const pressed = element("div", "keys", holder);
+    const keys = KEYS.filter((key) => key.beat >= headline.beat && key.beat < headline.out).map((key) => {
+      const made = element("div", "key", pressed);
+      for (const cap of key.keys) element("span", "cap", made, cap);
+      element("span", "hint", made, key.hint);
+      return { made, key };
+    });
+    if (!keys.length) pressed.remove();
+    return { band, holder, parts, sub, headline, keys };
   });
   const rings = RINGS.map((ring) => {
     const made = element("div", "ring", hud);
@@ -138,7 +148,7 @@ export function build(stage) {
   // The ending.
   const outro = element("div", "outro", hud);
   const outroLogo = element("img", "logo", outro);
-  outroLogo.src = "../kit/shots/kep.png";
+  outroLogo.src = `../${folder}/shots/kep.png`;
   const outroName = element("div", "name", outro, "Muster");
   const install = element("div", "install", outro);
   install.innerHTML =
@@ -155,59 +165,61 @@ export function build(stage) {
     const beat = t / at(1);
 
     // Act 1: the lines, the rows, the squeeze, the dot.
-    const squeeze = spring(t, at(ACT1.squeeze), { omega: 9, zeta: 0.8 });
-    const up = spring(t, at(ACT1.up));
-    const linesGone = between(t, ACT1.squeeze, ACT1.squeeze + 0.8);
-    style(act, { display: beat < 20 ? "block" : "none" });
-    style(line1, { top: px(330 - 210 * up - 60 * linesGone), opacity: 1 - linesGone });
-    first.forEach((span, i) => {
-      const k = spring(t, at(ACT1.line1.beats[i]));
-      style(span, { opacity: clamp(k * 1.6), transform: `translateY(${px(60 * (1 - k))})` });
-      mark(`line1.${i}`, 960, 330 - 210 * up + 60 * (1 - k), 120);
-    });
-    const rise2 = spring(t, at(ACT1.line2.beat));
-    style(line2, {
-      top: px(262 + 70 * (1 - rise2) - 60 * linesGone),
-      opacity: clamp(rise2 * 1.6) * (1 - linesGone),
-    });
-    const centre = { x: 960, y: 560 };
-    cards.forEach((card, i) => {
-      const k = spring(t, at(ACT1.cards[i].beat));
-      const home = { x: 960, y: 420 + i * 140 + 63 };
-      const x = home.x + (centre.x - home.x) * squeeze;
-      const y = home.y + 70 * (1 - k) + (centre.y - home.y) * squeeze;
-      const scale = (0.94 + 0.06 * k) * (1 - 0.97 * squeeze);
-      style(card, {
-        left: px(x),
-        top: px(y),
-        opacity: clamp(k * 1.5) * (1 - between(t, ACT1.squeeze + 0.5, ACT1.squeeze + 1)),
-        transform: `translate(-50%, -50%) scale(${scale.toFixed(4)})`,
+    style(act, { display: ACT1 && beat < WINDOW_IN + 0.5 ? "block" : "none" });
+    if (ACT1) {
+      const squeeze = spring(t, at(ACT1.squeeze), { omega: 9, zeta: 0.8 });
+      const up = spring(t, at(ACT1.up));
+      const linesGone = between(t, ACT1.squeeze, ACT1.squeeze + 0.8);
+      style(line1, { top: px(330 - 210 * up - 60 * linesGone), opacity: 1 - linesGone });
+      first.forEach((span, i) => {
+        const k = spring(t, at(ACT1.line1.beats[i]));
+        style(span, { opacity: clamp(k * 1.6), transform: `translateY(${px(60 * (1 - k))})` });
+        mark(`line1.${i}`, 960, 330 - 210 * up + 60 * (1 - k), 120);
       });
-      mark(`card.${i}`, x, y, 270 * scale);
-    });
-    const tag = spring(t, at(ACT1.badge.beat), { omega: 16, zeta: 0.6 });
-    const tagHome = { x: 1150, y: 420 + 3 * 140 + 120 };
-    style(badge, {
-      left: px(tagHome.x + (centre.x - tagHome.x) * squeeze),
-      top: px(tagHome.y + (centre.y - tagHome.y) * squeeze),
-      opacity: clamp(tag * 2) * (1 - between(t, ACT1.squeeze + 0.5, ACT1.squeeze + 1)),
-      transform: `translate(-50%, -50%) rotate(-3deg) scale(${((0.6 + 0.4 * tag) * (1 - 0.97 * squeeze)).toFixed(4)})`,
-    });
-    const dotIn = spring(t, at(ACT1.dot), { omega: 16, zeta: 0.55 });
-    const pulse = springs(t, 1, ACT1.pulses.flatMap((b) => [[b, 1.5], [b + 0.4, 1]]), { omega: 20, zeta: 0.6 });
-    // On the drop the dot bursts outward and is gone as Kep lands.
-    const burst = spring(t, at(REVEAL.logo), { omega: 12, zeta: 0.9 });
-    const dotScale = dotIn * pulse * (1 + 26 * burst);
-    style(dot, {
-      transform: `translate(-50%, -50%) scale(${dotScale.toFixed(4)})`,
-      opacity: 1 - between(t, REVEAL.logo, REVEAL.logo + 0.45),
-    });
-    mark("dot", 960, 560, 18 * dotScale);
-    const asked = spring(t, at(ACT1.question.beat));
-    style(question, {
-      opacity: clamp(asked * 1.5) * (1 - between(t, ACT1.question.out, ACT1.question.out + 0.4)),
-      transform: `translate(-50%, 0) translateY(${px(30 * (1 - asked))})`,
-    });
+      const rise2 = spring(t, at(ACT1.line2.beat));
+      style(line2, {
+        top: px(262 + 70 * (1 - rise2) - 60 * linesGone),
+        opacity: clamp(rise2 * 1.6) * (1 - linesGone),
+      });
+      const centre = { x: 960, y: 560 };
+      cards.forEach((card, i) => {
+        const k = spring(t, at(ACT1.cards[i].beat));
+        const home = { x: 960, y: 420 + i * 140 + 63 };
+        const x = home.x + (centre.x - home.x) * squeeze;
+        const y = home.y + 70 * (1 - k) + (centre.y - home.y) * squeeze;
+        const scale = (0.94 + 0.06 * k) * (1 - 0.97 * squeeze);
+        style(card, {
+          left: px(x),
+          top: px(y),
+          opacity: clamp(k * 1.5) * (1 - between(t, ACT1.squeeze + 0.5, ACT1.squeeze + 1)),
+          transform: `translate(-50%, -50%) scale(${scale.toFixed(4)})`,
+        });
+        mark(`card.${i}`, x, y, 270 * scale);
+      });
+      const tag = spring(t, at(ACT1.badge.beat), { omega: 16, zeta: 0.6 });
+      const tagHome = { x: 1150, y: 420 + 3 * 140 + 120 };
+      style(badge, {
+        left: px(tagHome.x + (centre.x - tagHome.x) * squeeze),
+        top: px(tagHome.y + (centre.y - tagHome.y) * squeeze),
+        opacity: clamp(tag * 2) * (1 - between(t, ACT1.squeeze + 0.5, ACT1.squeeze + 1)),
+        transform: `translate(-50%, -50%) rotate(-3deg) scale(${((0.6 + 0.4 * tag) * (1 - 0.97 * squeeze)).toFixed(4)})`,
+      });
+      const dotIn = spring(t, at(ACT1.dot), { omega: 16, zeta: 0.55 });
+      const pulse = springs(t, 1, ACT1.pulses.flatMap((b) => [[b, 1.5], [b + 0.4, 1]]), { omega: 20, zeta: 0.6 });
+      // On the drop the dot bursts outward and is gone as Kep lands.
+      const burst = spring(t, at(REVEAL.logo), { omega: 12, zeta: 0.9 });
+      const dotScale = dotIn * pulse * (1 + 26 * burst);
+      style(dot, {
+        transform: `translate(-50%, -50%) scale(${dotScale.toFixed(4)})`,
+        opacity: 1 - between(t, REVEAL.logo, REVEAL.logo + 0.45),
+      });
+      mark("dot", 960, 560, 18 * dotScale);
+      const asked = spring(t, at(ACT1.question.beat));
+      style(question, {
+        opacity: clamp(asked * 1.5) * (1 - between(t, ACT1.question.out, ACT1.question.out + 0.4)),
+        transform: `translate(-50%, 0) translateY(${px(30 * (1 - asked))})`,
+      });
+    }
 
     // The drop: Kep, the name, what it is.
     const kep = spring(t, at(REVEAL.logo), { omega: 15, zeta: 0.6 });
@@ -222,9 +234,9 @@ export function build(stage) {
 
     // The window, under the camera.
     const view = camera(t);
-    const shown = beat >= 19 && beat < 86 ? 1 - between(t, OUTRO.logo - 0.6, OUTRO.logo) : 0;
+    const shown = beat >= WINDOW_IN - 0.5 && beat < OUTRO.logo + 1.5 ? 1 - between(t, OUTRO.logo - 0.6, OUTRO.logo) : 0;
     style(world, {
-      opacity: (shown * clamp((t - at(19.5)) / at(0.4))).toFixed(4),
+      opacity: (shown * clamp((t - at(WINDOW_IN)) / at(0.4))).toFixed(4),
       transform: `translate(${px(view.ax)}, ${px(view.ay)}) scale(${view.zoom.toFixed(5)}) translate(${px(-view.x)}, ${px(-view.y)})`,
     });
     const topLeft = onScreen({ x: 0, y: 0 }, t);
@@ -245,43 +257,49 @@ export function build(stage) {
       });
     }
 
-    // The prompt, typed a letter at a time.
-    const prompt = crops[TYPED.crop];
-    const letters = 27;
-    const typing = clamp((t - at(TYPED.from)) / (at(TYPED.to) - at(TYPED.from)));
-    const width = 10 + (TYPED.width - 10) * (Math.floor(typing * letters) / letters);
-    style(typed, {
-      display: beat >= TYPED.from && beat < TYPED.until ? "block" : "none",
-      left: px(prompt.x),
-      top: px(prompt.y),
-      clipPath: `inset(0 ${px(prompt.w - width)} 0 0)`,
-      zIndex: 3,
-    });
-
-    // `muster ssh`, a row at a time; the typed rows a letter at a time.
-    const rowHeight = ssh.h / SSH_ROWS.rows;
-    masks.forEach((mask, i) => {
-      const row = Math.min(i, SSH_ROWS.rows - 1);
-      const start = SSH_ROWS.beats[row];
-      const typedRow = SSH_ROWS.typed.includes(i) && i < SSH_ROWS.rows;
-      const progress = typedRow
-        ? Math.floor(clamp((t - at(start)) / at(1)) * 24) / 24
-        : beat >= start
-          ? 1
-          : 0;
-      const last = i === SSH_ROWS.rows;
-      style(mask, {
-        display: current[1] === "ssh" && (last ? beat < SSH_ROWS.beats.at(-1) + 1 : progress < 1) ? "block" : "none",
-        left: px(ssh.x - 6 + (ssh.w + 12) * (last ? 0 : progress)),
-        top: px(ssh.y + i * rowHeight),
-        width: px((ssh.w + 12) * (last ? 1 : 1 - progress) + (last ? 24 : 0)),
-        height: px(rowHeight + (last ? 8 : 0.5)),
+    // What is typed, a letter at a time.
+    for (const { made, typing } of typings) {
+      const area = crops[typing.crop];
+      const letters = typing.letters ?? 27;
+      const typed = clamp((t - at(typing.from)) / (at(typing.to) - at(typing.from)));
+      const full = typing.width ?? area.w;
+      const lead = typing.lead ?? 10;
+      const width = lead + (full - lead) * (Math.floor(typed * letters) / letters);
+      style(made, {
+        display: beat >= typing.from && beat < typing.until ? "block" : "none",
+        left: px(area.x),
+        top: px(area.y),
+        clipPath: `inset(0 ${px(area.w - width)} 0 0)`,
         zIndex: 3,
       });
-    });
+    }
+
+    // `muster ssh`, a row at a time; the typed rows a letter at a time.
+    if (SSH_ROWS) {
+      const rowHeight = ssh.h / SSH_ROWS.rows;
+      masks.forEach((mask, i) => {
+        const row = Math.min(i, SSH_ROWS.rows - 1);
+        const start = SSH_ROWS.beats[row];
+        const typedRow = SSH_ROWS.typed.includes(i) && i < SSH_ROWS.rows;
+        const progress = typedRow
+          ? Math.floor(clamp((t - at(start)) / at(1)) * 24) / 24
+          : beat >= start
+            ? 1
+            : 0;
+        const last = i === SSH_ROWS.rows;
+        style(mask, {
+          display: current[1] === "ssh" && (last ? beat < SSH_ROWS.beats.at(-1) + 1 : progress < 1) ? "block" : "none",
+          left: px(ssh.x - 6 + (ssh.w + 12) * (last ? 0 : progress)),
+          top: px(ssh.y + i * rowHeight),
+          width: px((ssh.w + 12) * (last ? 1 : 1 - progress) + (last ? 24 : 0)),
+          height: px(rowHeight + (last ? 8 : 0.5)),
+          zIndex: 3,
+        });
+      });
+    }
 
     // Headlines, and the band under them.
-    for (const { band, holder, parts, sub, headline } of headlines) {
+    for (const { band, holder, parts, sub, headline, keys } of headlines) {
       const out = between(t, headline.out, headline.out + 0.4);
       const visible = beat >= headline.beat - 0.1 && beat < headline.out + 0.5;
       // The band under the text comes in as the window moves over to its side.
@@ -296,6 +314,19 @@ export function build(stage) {
       });
       const said = spring(t, at(headline.beat + 0.35));
       style(sub, { opacity: clamp(said * 1.5), transform: `translateY(${px(20 * (1 - said))})` });
+      // A key shows from its press until the next one, or two beats.
+      keys.forEach(({ made, key }, i) => {
+        const until = Math.min(keys[i + 1]?.key.beat ?? Infinity, key.beat + 2.2);
+        const on = spring(t, at(key.beat - 0.12), { omega: 18, zeta: 0.6 });
+        const off = between(t, until - 0.2, until);
+        const showing = beat >= key.beat - 0.15 && beat < until;
+        style(made, {
+          display: showing ? "flex" : "none",
+          opacity: (clamp(on * 2) * (1 - off)).toFixed(3),
+          transform: `translateY(${px(14 * (1 - on))}) scale(${(0.9 + 0.1 * on).toFixed(4)})`,
+        });
+        if (showing) mark(`key.${key.beat}`, 300, 300 + 14 * (1 - on), 60 * on);
+      });
     }
 
     // Rings round what to look at, on screen so their line keeps its width.
@@ -350,4 +381,3 @@ export function build(stage) {
   };
 }
 
-export { SCALE };

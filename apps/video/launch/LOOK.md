@@ -9,7 +9,8 @@ tokens (`apps/desktop/src/styles/tokens.css`), its type the app's own faces.
 - **Text:** `#e8e6e1`; quiet `#9b988f`.
 - **The accent** in a line (a word, or two that go together: "one list", "needs you") takes the colour of what it means, as the app's marks do: waiting `#ef7e6b`, working `#d4b06f`, done `#7fbf8f`, and the keys' blue `#4f8fff` for where work goes (a worktree, a server). One accent a line.
 - **Cards:** a crop of the app on `#1d1d1c`, 18 px corners, a 1 px line of `rgba(255,255,255,0.08)`, and the app's dialog shadow (`0 24px 64px rgba(0,0,0,0.55)`).
-- **The window:** the shot at 12 px corners with the same line and shadow, and the Mac's three buttons where the app leaves room for them.
+- **The window:** the shot at 12 px corners with the same line and shadow, and, for the desktop app, the Mac's three buttons where the app leaves room for them. The terminal UI's is the terminal alone, on its own background `#111110`.
+- **Key caps:** in the terminal UI's cut, each key pressed shows under the headline as a cap (`#2b2b29`, 12 px corners, JetBrains Mono 30 px) with what the terminal UI's own hints call it beside it, in `#9b988f`; one at a time, from its press until the next.
 - **Rings:** what the eye should find is ringed, 3 px, in the colour of what it means, 10 px clear of it.
 - **The pointer:** the Mac's arrow, white with a black edge; a click shrinks it and leaves a ring.
 - **Motion:** things arrive on a beat with a spring and settle with a small overshoot; they leave on the beat before the next thing arrives. The camera moves only between beats' events, one move at a time, and carries the window from one side to the other as the text changes sides.
