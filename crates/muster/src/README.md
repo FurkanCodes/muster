@@ -86,8 +86,9 @@ to the daemon over its Unix socket through `muster_client::Connection`
   (`PRD-01`, `PRD-15`). Run-changing `muster run` verbs are refused inside an
   agent's session.
 - An upgrade always checks SHA-256 before it swaps by rename, and the
-  attestation too unless `MUSTER_SKIP_ATTESTATION` is set or the release is a
-  stand-in (`ARC-21`).
+  attestation too where the GitHub CLI can, unless `MUSTER_SKIP_ATTESTATION`
+  is set or the release is a stand-in; where it cannot, the checksum alone is
+  taken and said, unless `MUSTER_REQUIRE_ATTESTATION` refuses it (`ARC-21`).
 - No source file over 1,000 lines (`ARC-08`).
 
 ## Side Effects

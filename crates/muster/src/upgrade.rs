@@ -5,7 +5,9 @@
 //! The archive for this machine is checked against its published SHA-256
 //! and, where the GitHub CLI is signed in, against the attestation GitHub
 //! made as the release workflow built it, before anything is replaced; a
-//! mismatch replaces nothing (`ARC-21`). The new program
+//! mismatch replaces nothing (`ARC-21`). Where the GitHub CLI cannot check
+//! it, the checksum alone is taken, as `install.sh` takes it, and said so,
+//! unless `MUSTER_REQUIRE_ATTESTATION` asks for the attestation. The new program
 //! is swapped in with a rename in its own folder, so the file is never half
 //! written, and running programs keep the one they started with. On a
 //! Mac the Muster app, where one is installed, is updated the same way
@@ -114,34 +116,45 @@ async fn say_attested(saved: &Path) -> Result<(), String> {
         return Ok(());
     }
     let skip = std::env::var_os("MUSTER_SKIP_ATTESTATION").is_some();
+    let require = std::env::var_os("MUSTER_REQUIRE_ATTESTATION").is_some();
     let attested = !skip && attested(saved).await?;
-    println!("{}", checked(skip, attested)?);
+    println!("{}", checked(skip, require, attested)?);
     Ok(())
 }
 
-/// What is said of a download as its attestation was checked (`attested`),
-/// or not as `MUSTER_SKIP_ATTESTATION` asks (`skip`): one that could not be
-/// checked otherwise is refused (`ARC-21`).
-fn checked(skip: bool, attested: bool) -> Result<String, String> {
-    match (skip, attested) {
-        (true, _) => Ok(
+/// What is said of a download, its checksum already matched, as its
+/// attestation was checked (`attested`), not as `MUSTER_SKIP_ATTESTATION`
+/// asks (`skip`), or could not be, as the GitHub CLI cannot here: then its
+/// checksum alone is taken, as `install.sh` takes it, unless
+/// `MUSTER_REQUIRE_ATTESTATION` asks for the attestation (`require`), and
+/// it is refused (`ARC-21`). An attestation that does not match is refused
+/// before this (`attested`).
+fn checked(skip: bool, require: bool, attested: bool) -> Result<String, String> {
+    match (skip, require, attested) {
+        (true, ..) => Ok(
             "Not checked against its build attestation, as MUSTER_SKIP_ATTESTATION \
-                         asks: its checksum only."
+             asks: its checksum only."
                 .to_owned(),
         ),
-        (false, true) => Ok(format!(
+        (false, _, true) => Ok(format!(
             "Checked: built by {REPOSITORY}'s release workflow."
         )),
-        (false, false) => Err(UNCHECKED.to_owned()),
+        (false, true, false) => Err(UNCHECKED.to_owned()),
+        (false, false, false) => Ok(CHECKSUM_ONLY.to_owned()),
     }
 }
 
+/// What is said of a download whose checksum matched but whose build
+/// attestation the GitHub CLI could not check.
+const CHECKSUM_ONLY: &str = "Checked against its published checksum; not against its build \
+     attestation, as the GitHub CLI (gh) is not installed, too old, or not signed in (`gh auth \
+     login` checks it too).";
+
 /// Why a download whose build attestation could not be checked is not
-/// installed.
+/// installed where `MUSTER_REQUIRE_ATTESTATION` asks for one.
 const UNCHECKED: &str = "the download could not be checked against the attestation GitHub made \
      as it was built, as the GitHub CLI (gh) is not installed, too old, or not signed in (`gh \
-     auth login`); so nothing was installed (MUSTER_SKIP_ATTESTATION=1 installs it with its \
-     checksum checked only)";
+     auth login`), and MUSTER_REQUIRE_ATTESTATION asks for it; so nothing was installed";
 
 /// Unpacks the archive at `archive` into `into`.
 fn untar(archive: &Path, into: &Path) -> Result<(), String> {
@@ -364,17 +377,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_download_that_cannot_be_checked_is_refused_but_where_asked_arc_21() {
+    fn without_gh_the_checksum_alone_is_taken_and_said_unless_asked_otherwise_arc_21() {
         assert!(
-            checked(false, true)
+            checked(false, false, true)
                 .unwrap()
                 .starts_with("Checked: built by")
         );
-        let refused = checked(false, false).unwrap_err();
+        // No gh, or one not signed in: the checksum alone, said so.
+        let taken = checked(false, false, false).unwrap();
+        assert!(taken.contains("published checksum"), "{taken}");
+        assert!(taken.contains("gh auth login"), "{taken}");
+        // Asked for the attestation: refused without it.
+        let refused = checked(false, true, false).unwrap_err();
         assert!(refused.contains("nothing was installed"), "{refused}");
-        assert!(refused.contains("gh auth login"), "{refused}");
-        assert!(refused.contains("MUSTER_SKIP_ATTESTATION=1"), "{refused}");
-        assert!(checked(true, false).unwrap().contains("checksum only"));
+        assert!(refused.contains("MUSTER_REQUIRE_ATTESTATION"), "{refused}");
+        assert!(
+            checked(true, true, false)
+                .unwrap()
+                .contains("checksum only")
+        );
     }
 
     #[test]
