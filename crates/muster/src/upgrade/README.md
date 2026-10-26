@@ -24,9 +24,11 @@ reloads the daemon. It calls `app::upgrade` to replace an installed
 ## Invariants
 
 - The app is checked like the program: always against its published SHA-256,
-  and against the attestation (`super::say_attested`) unless
-  `MUSTER_SKIP_ATTESTATION` is set or the release is a stand-in. A mismatch
-  replaces nothing (`ARC-21`).
+  and against the attestation (`super::say_attested`) where the GitHub CLI
+  can, unless `MUSTER_SKIP_ATTESTATION` is set or the release is a stand-in;
+  without the GitHub CLI, the checksum alone unless
+  `MUSTER_REQUIRE_ATTESTATION` is set. A mismatch replaces nothing
+  (`ARC-21`).
 - A stand-in release (`MUSTER_RELEASES`, debug builds only) is installed only
   into `MUSTER_APP_DIR`, never into the person's own folders.
 - The swap is two renames in the app's own folder; if the second fails, the
@@ -42,7 +44,8 @@ reloads the daemon. It calls `app::upgrade` to replace an installed
 - Files: a temp dir `.muster-app-upgrade-*` beside the app; the old app moves
   into it as `Muster.app.old` and is removed with it.
 - stdout: `Downloading …`. Reads `MUSTER_APP_DIR` and `HOME`, and through the
-  parent `MUSTER_RELEASES` and `MUSTER_SKIP_ATTESTATION`.
+  parent `MUSTER_RELEASES`, `MUSTER_SKIP_ATTESTATION` and
+  `MUSTER_REQUIRE_ATTESTATION`.
 
 ## Verification
 
