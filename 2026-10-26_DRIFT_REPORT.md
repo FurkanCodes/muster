@@ -239,7 +239,7 @@ No drift detected.
 ## crates/muster-notch/src/README.md
 
 - `run`: the README says it "returns at once if … no screen has a notch". The code returns early only when there is no notch **and** the program is not running as Muster's app. Inside the app it carries on without a notch so notifications still work (`src/mac.rs:84-90`).
-- `ARC-13` is cited for "hidden boards have no timer, and time labels wake only at their next boundary". In `ARCHITECTURE.md:432`, `ARC-13` is "every task and thread has an owner… every wait has a deadline". It says nothing about timers or time labels. The code comments repeat the same mis-citation (`src/board.rs:134`, `src/hover.rs:67`).
+- `ARC-13` is cited for "hidden boards have no timer, and time labels wake only at their next boundary". In `ARCHITECTURE.md:432`, `ARC-13` is "every task and thread has an owner… every wait has a deadline". It says nothing about timers or time labels. The code comments repeat the same wrong citation (`src/board.rs:134`, `src/hover.rs:67`).
 - The Interface leaves out the public `board::ago(then, now) -> String` (`src/board.rs:321`) and the public `geometry::Segment` enum (`src/geometry.rs:241`). `Segment` is the type that `outline` returns.
 - Side Effects lists only `Command::Reveal` as sent to the daemon. The link also sends `ClientFrame::Subscribe` (`src/link.rs:125`) and `ClientFrame::Notifier { ready }` (`src/link.rs:190`).
 

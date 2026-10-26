@@ -13,6 +13,8 @@ extend-exclude = [
 [default.extend-words]
 # Names, not typos.
 ratatui = "ratatui"
+# "PNGs", split by typos.
+PN = "PN"
 # GraphQL's "not in" (Linear's API).
 nin = "nin"
 # Misspelt on purpose, in tests that a mistyped key or text is refused or
